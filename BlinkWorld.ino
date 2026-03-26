@@ -1,4 +1,9 @@
-//EDited by Jack Denicore
+
+//EDITED BY KAI D
+
+//edited by dax
+
+//edited by jack d
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -13,3 +18,12 @@ void loop() {
   digitalWrite(LED_BUILTIN, LOW);   // turn the LED off by making the voltage LOW
   delay(1000);                      // wait for a second
 }
+
+
+
+
+
+
+
+
+
