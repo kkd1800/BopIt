@@ -1,4 +1,7 @@
-//EDited by Jack Denicore
+
+//edited by dax
+
+//edited by jack d
 
 // the setup function runs once when you press reset or power the board
 void setup() {
