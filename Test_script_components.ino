@@ -2,8 +2,10 @@
 #include <oled.h>
 #include <Wire.h>
 #include <PCA9685.h>
+#include <TM1637Display.h>
 
 OLED display(A4, A5, NO_RESET_PIN, OLED::W_128, OLED::H_64, OLED::CTRL_SH1106, 0x3C);
+TM1637Display seg(10, 9);  // CLK=D10, DIO=D9
 
 // 42x48 bitmap (6 pages, 252 bytes)
 static const uint8_t tieFighter[] PROGMEM =
@@ -86,6 +88,9 @@ void setup() {
   display.draw_bitmap_P(43,7,42,48,tieFighter);
   display.display();
 
+  seg.setBrightness(4);
+  seg.showNumberDec(shieldLevel, true);
+
   // set button pin as input
   pinMode(buttonPin, INPUT_PULLUP);
 
@@ -139,6 +144,8 @@ void loop() {
     setLED(LED2, shieldLevel >= 2);
     setLED(LED3, shieldLevel >= 3);
     setLED(LED4, shieldLevel >= 4);
+
+    seg.showNumberDec(shieldLevel, true);  // update 7-segment on every change
   }
 
   // save the current state for next time
