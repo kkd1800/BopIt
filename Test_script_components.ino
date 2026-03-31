@@ -2,8 +2,10 @@
 #include <oled.h>
 #include <Wire.h>
 #include <PCA9685.h>
+#include <TM1637Display.h>
 
-OLED display(A4, A5, NO_RESET_PIN, OLED::W_128, OLED::H_64, OLED::CTRL_SH1106, 0x3C);
+OLED OLED_display(A2, A3, NO_RESET_PIN, OLED::W_128, OLED::H_64, OLED::CTRL_SH1106, 0x3C);
+TM1637Display seg(10, 9);  // CLK=D10, DIO=D9
 
 // 42x48 bitmap (6 pages, 252 bytes)
 static const uint8_t tieFighter[] PROGMEM =
@@ -78,31 +80,29 @@ void setLED(uint8_t channel, bool state) {
 }
 
 void setup() {
+  // OLED owns Wire startup — let it go first, no Wire.begin() anywhere
+  OLED_display.begin();
+  OLED_display.clear();
+  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
+  OLED_display.display();
 
-  delay(1000);
-  display.begin();
-  display.clear();
-  display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
-  display.draw_bitmap_P(43,7,42,48,tieFighter);
-  display.display();
-
-  // set button pin as input
-  pinMode(buttonPin, INPUT_PULLUP);
-
-  // set touch sensor pin as input
-  pinMode(touchPin, INPUT);
-
-  // set encoder pins as inputs
-  pinMode(CLK, INPUT_PULLUP);
-  pinMode(direc_enc, INPUT_PULLUP);
-
-  // setup PCA9685
-  Wire.begin();
+  // PCA9685 joins the already-running bus
   pca9685.setupSingleDevice(Wire, 0x40);
   pca9685.setToFrequency(1000);
 
-  // read the starting state of CLK
+  // Rest of init...
+  seg.setBrightness(4);
+  seg.showNumberDec(shieldLevel, true);
+
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(touchPin, INPUT);
+  pinMode(CLK, INPUT_PULLUP);
+  pinMode(direc_enc, INPUT_PULLUP);
   lastStateCLK = digitalRead(CLK);
+
+  delay(1000);
+  OLED_display.draw_bitmap_P(43, 7, 42, 48, tieFighter);
+  OLED_display.display();
 }
 
 void loop() {
@@ -139,6 +139,8 @@ void loop() {
     setLED(LED2, shieldLevel >= 2);
     setLED(LED3, shieldLevel >= 3);
     setLED(LED4, shieldLevel >= 4);
+
+    seg.showNumberDec(shieldLevel, true);  // update 7-segment on every change
   }
 
   // save the current state for next time
