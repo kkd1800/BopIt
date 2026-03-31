@@ -13,9 +13,7 @@ PCA9685 pca9685;
 //variables
 bool success = false;
 uint32_t time_limit = 5000;
-uint32_t start_time = 0;
-uint32_t end_time = 0;
-uint32_t remaining_time = 0;
+uint32_t time_delay = 1000;
 uint8_t touchPin = 4;
 uint8_t score = 0;
 
@@ -24,7 +22,7 @@ void setLED(uint8_t channel, bool state) {
   pca9685.setChannelDutyCycle(channel, state ? 100 : 0);
 }
 
-//intro
+// intro
 void setup() {
   // setup pins
   pinMode(7, INPUT_PULLUP);
@@ -69,41 +67,45 @@ void setup() {
 
   // wait for button press to start game
   while(digitalRead(7) == HIGH){}
-
-  // refresh OLED
-  OLED_display.clear();
-  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
-  OLED_display.draw_bitmap_P(43,7,42,48,tieFighter);
-  OLED_display.display();
 }
 
 // main loop
 void loop() {
+  // update score
   score_hex.showNumberDec(score, true);
-  delay(1000);
 
-  // set start time and issue command
-  start_time = millis();
-  success = command(start_time, time_limit);
+  // enter base state
+  OLED_display.clear();
+  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
+  OLED_display.display();
+
+  // issue command
+  delay(time_delay);
+  success = command(time_limit);
 
   // go to failure function if unsuccessful
   if(!success){
     failure();
+    score = 0;
   }
-  
-  score++;
+  else score++;
 }
 
-bool command(uint32_t start_time, uint32_t limit){
-  // set time and display timer
-  uint32_t current_time = millis() - start_time;
+bool command(uint32_t limit){
+  // command cue
+  OLED_display.draw_bitmap_P(43,7,42,48,tieFighter);
+  OLED_display.display();
+
+  // set & display times
+  uint32_t start_time = millis();
+  uint32_t current_time = 0;
   timer_hex.showNumberDec(limit, true);
 
   // check for input while decrementing timer
   while(current_time < limit){
     timer_hex.showNumberDec(limit - current_time, true);
 
-    // return true if correct input is detected
+    // clear OLED and return true if input is detected
     if (digitalRead(touchPin) == LOW) {
       timer_hex.showNumberDec(0, true);
       return true;
@@ -118,7 +120,12 @@ bool command(uint32_t start_time, uint32_t limit){
 }
 
 void failure(){
-  //turn on failure LED and loop infinitely
+  // enter fail state
   setLED(0, true);
-  while(1){}
+
+  // hold until restart triggered
+  while(digitalRead(7) == HIGH){}
+
+  // leave fail state
+  setLED(0, false);
 }
