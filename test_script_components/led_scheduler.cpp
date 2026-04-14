@@ -14,7 +14,7 @@ struct LedScheduler {
 LedScheduler ledSched = { PAT_IDLE, PAT_IDLE, 0, 0, 40, false };
 
 // Call this from game logic — never call strip.show() directly
-void setPattern(LedPattern p, uint16_t intervalMs) {
+void setPattern(LedPattern p, uint16_t intervalMs = 40) {
   ledSched.nextPattern = p;
   ledSched.interval    = intervalMs;
   ledSched.dirty       = true;
