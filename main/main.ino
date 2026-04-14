@@ -5,6 +5,8 @@
 #include <TM1637Display.h>
 #include "bitmaps.h"
 #include "DFRobotDFPlayerMini.h"
+#include <Adafruit_NeoPixel.h>
+#include "led_scheduler.h"
 
 OLED OLED_display(A2, A3, NO_RESET_PIN, OLED::W_128, OLED::H_64, OLED::CTRL_SH1106, 0x3C);
 TM1637Display timer_hex(10, 9);  // CLK=D10, DIO=D9
@@ -20,7 +22,7 @@ static const int direcEnc = 6;
 
 // live variables
 bool success = false;
-uint32_t timeLimit = 5000;
+uint32_t timeLimit = 5200;
 uint32_t timeDelay = 1000;
 uint8_t score = 0;
 int8_t shieldLevel = 0;
@@ -37,12 +39,14 @@ void waitForTrackToFinish() {
   }
 }
 
+// helper to clear PCA channels
 void clearChannels(){
   for(int i=0; i<=5; i++){
     pca.setPin(i, 0);
   }
 }
 
+// helper to set PCA channels
 void setChannels(uint8_t n){
   clearChannels();
   for(int i=1; i<=n; i++){
@@ -50,7 +54,7 @@ void setChannels(uint8_t n){
   }
 }
 
-// Convert percent to 12 bit
+// convert percent to 12 bit
 uint16_t percentTo12Bit(uint8_t pct) {
   if (pct == 0)   return 0;
   if (pct >= 100) return 4095;
@@ -59,6 +63,11 @@ uint16_t percentTo12Bit(uint8_t pct) {
 
 // intro
 void setup() {
+  // neopixel stick setup
+  stripRGBW.begin();
+  stripRGBW.show();
+  setPattern(IDLE);
+
   // setup pins
   pinMode(7, INPUT_PULLUP);
   pinMode(touchPin, INPUT);
@@ -107,6 +116,8 @@ void setup() {
 
   for (uint8_t row = 1; row <= 57; row++){
     
+    ledTick();
+
     if(row <= 54) loadingBar[row] = 25;
     if(row >= 2) loadingBar[row-1] = 29;
     if(row >= 3) loadingBar[row-2] = 31;
@@ -116,7 +127,9 @@ void setup() {
   }
 
   // wait for button press to start game
-  while(digitalRead(7) == HIGH){}
+  while(digitalRead(7) == HIGH){
+    ledTick();
+  }
 
   OLED_display.clear();
   OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
@@ -125,8 +138,15 @@ void setup() {
 
 // main loop
 void loop() {
-  // update score
+  ledTick();
+
+  // update displays & delay
   score_hex.showNumberDec(score, true);
+  setPattern(IDLE);
+
+  if((score % 5) == 0){
+    timeLimit = timeLimit - 200;
+  }
 
   // enter base state
   shieldLevel = 6;
@@ -138,27 +158,78 @@ void loop() {
   OLED_display.draw_bitmap_P(18, 10, 92, 44, shield);
   OLED_display.display();
 
-  // issue command
-  delay(timeDelay);
+  // delay while maintaining pattern
+  for(int i = 0; i < timeDelay;){
+    ledTick();
+    delay(10);
+    i = i + 10;
+  }
   
-  int choice = random(0, 2);  // 0 or 1
+  int choice = random(0, 3);  // 0 or 1
 
   if (choice == 0) {
     success = command_shields(timeLimit);
-  } else {
-    success = command_test(timeLimit);
+  } else if(choice ==1) {
+    success = command_blaster(timeLimit);
+  } else{
+    success = command_hyperdrive(timeLimit);
   }
 
   // go to failure function if unsuccessful
   if(!success){
     failure();
     score = 0;
+    timeLimit = 5200;
+  }
+  else if(score >= 30){
+    victory();
+    score = 0;
+    timeLimit = 5200;
   }
   else score++;
 }
 
-bool command_test(uint32_t limit){
+bool command_hyperdrive(uint32_t limit){
   // command cue
+  player.volume(15);
+  player.play(3);
+  OLED_display.clear();
+  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
+  OLED_display.draw_bitmap_P(0,0,128,64, hyperdriveTarget);
+  OLED_display.display();
+
+  // set & display times
+  uint32_t start_time = millis();
+  uint32_t current_time = 0;
+  timer_hex.showNumberDec(limit, true);
+
+  // check for input while decrementing timer
+  while(current_time < limit){
+    timer_hex.showNumberDec(limit - current_time, true);
+    ledTick();
+
+    // return true if input is detected
+    if (digitalRead(touchPin) == LOW) {
+      //sucess cue
+      timer_hex.showNumberDec(0, true);
+      player.volume(15);
+      player.play(1);
+
+      // return success case
+      return true;
+    }
+
+    current_time = millis() - start_time;
+  }
+
+  // return false if time runs out
+  timer_hex.showNumberDec(0, true);
+  return false;
+}
+
+bool command_blaster(uint32_t limit){
+  // command cue
+  player.volume(15);
   player.play(3);
   OLED_display.clear();
   OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
@@ -173,11 +244,13 @@ bool command_test(uint32_t limit){
   // check for input while decrementing timer
   while(current_time < limit){
     timer_hex.showNumberDec(limit - current_time, true);
+    ledTick();
 
     // return true if input is detected
-    if (digitalRead(touchPin) == LOW) {
+    if (digitalRead(7) == LOW) {
       //sucess cue
       timer_hex.showNumberDec(0, true);
+      player.volume(15);
       player.play(1);
 
       // return success case
@@ -197,6 +270,7 @@ bool command_shields(uint32_t limit){
   clearChannels();
   shieldLevel = 0;
 
+  player.volume(25);
   player.play(6);
 
   OLED_display.clear();
@@ -213,6 +287,7 @@ bool command_shields(uint32_t limit){
   // check for input while decrementing timer
   while(current_time < limit){
     timer_hex.showNumberDec(limit - current_time, true);
+    ledTick();
 
     // return true if input is detected
     if (shieldLevel == 6) {
@@ -253,7 +328,9 @@ bool command_shields(uint32_t limit){
 
 void failure(){
   // hold in fail state until restart triggered
+  setPattern(FAILURE);
   clearChannels();
+  player.volume(15);
   player.loop(5);
   OLED_display.clear();
   OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
@@ -263,6 +340,7 @@ void failure(){
   bool forward = true;
 
   while(digitalRead(7) == HIGH){
+    ledTick();
     pca.setPin(row, percentTo12Bit(100));
     if(forward){
       if(row == 5){
@@ -283,4 +361,43 @@ void failure(){
   }
 
   // leave fail state
+  player.stop();
+}
+
+void victory(){
+  // hold in victory state until restart triggered
+  setPattern(VICTORY);
+  clearChannels();
+  player.volume(15);
+  player.loop(4);
+  OLED_display.clear();
+  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
+  OLED_display.display();
+  
+  uint16_t row = 0;
+  bool forward = true;
+
+  while(digitalRead(7) == HIGH){
+    ledTick();
+    pca.setPin(row, percentTo12Bit(100));
+    if(forward){
+      if(row == 5){
+        row = 4;
+        forward = false;
+      }
+      else row++;
+    }
+    else{
+      if(row == 0){
+        row = 1;
+        forward = true;
+      }
+      else row--;
+    }
+    delay(50);
+    clearChannels();
+  }
+
+  // leave victory state
+  player.stop();
 }
