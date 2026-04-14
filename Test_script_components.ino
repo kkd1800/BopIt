@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include <PCA9685.h>
 #include <TM1637Display.h>
+#include <Adafruit_NeoPixel.h>
+#include "led_scheduler.h"
 
 OLED OLED_display(A2, A3, NO_RESET_PIN, OLED::W_128, OLED::H_64, OLED::CTRL_SH1106, 0x3C);
 TM1637Display seg(10, 9);  // CLK=D10, DIO=D9
@@ -80,6 +82,11 @@ void setLED(uint8_t channel, bool state) {
 }
 
 void setup() {
+  //neopixel stick setup
+  strip.begin();
+  strip.show();
+  setPattern(PAT_FAILURE);
+
   // OLED owns Wire startup — let it go first, no Wire.begin() anywhere
   OLED_display.begin();
   OLED_display.clear();
@@ -106,6 +113,7 @@ void setup() {
 }
 
 void loop() {
+  ledTick();
 
   // button logic
   if (digitalRead(buttonPin) == LOW) {
