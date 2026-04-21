@@ -207,7 +207,7 @@ void setup() {
   }
 
   pinMode(busyPin, INPUT_PULLUP);
-  player.volume(28);
+  player.volume(20);
   player.play(19);
 
   // initialize hex displays
@@ -232,7 +232,7 @@ void setup() {
   uint8_t loadingBar[56];
   memcpy_P(loadingBar, loadingBar_template, 56);  // copy flash → RAM
 
-  fadeIn_RGB(BLUE_RGB, 30, 25);
+  stripRGB.setBrightness(0);
 
   for (uint8_t row = 1; row <= 19; row++){
     if((row % 2) == 0){
@@ -242,7 +242,6 @@ void setup() {
       pca.setPin(9, 0);
       pca.setPin(10, percentTo12Bit(100));
       pca.setPin(11, 0);
-      fillAll_RGB(BLUE_RGB);
     } else{
       pca.setPin(7, percentTo12Bit(100));
       pca.setPin(6, 0);
@@ -250,6 +249,10 @@ void setup() {
       pca.setPin(8, 0);
       pca.setPin(11, percentTo12Bit(100));
       pca.setPin(10, 0);
+    }
+
+    if(row <= 15){
+      stripRGB.setBrightness(row * 2);
       fillAll_RGB(CYAN_RGB);
     }
 
@@ -274,12 +277,45 @@ void setup() {
   }
 
   // wait for button press to start game
-  player.volume(15);
-  player.play(18);
+  player.play(18); // should be 18
   setPattern(START_WAIT);
 
   while(digitalRead(7) == HIGH){
     ledTick();
+  }
+
+  // take off sequence
+  player.play(22);
+
+  for(int i = 6; i <= 11; i++){
+    pca.setPin(i, percentTo12Bit(100));
+  }
+
+  fillAll(stripRGBW.Color(0,   0,   0));
+  stripRGBW.show();
+
+  fillAll_RGB(stripRGB.Color(0,   255,   255));
+  stripRGB.show();
+
+  delay(5000);
+
+  stripRGB.setBrightness(150);
+  stripRGB.show();
+
+  for (int b = 0; b <= 120; b += (120 / 100)) {
+    stripRGB.setBrightness(150-b);
+    stripRGB.show();
+    delay(30);
+  }
+  stripRGB.setBrightness(30);
+  stripRGB.show();
+
+  while(trackPlaying()){}
+
+  for (int b = 0; b <= 255; b += (255 / 20)) {
+        fillAll(stripRGBW.Color(0,   0,   b,   0));
+        stripRGBW.show();
+        delay(50);
   }
 
   OLED_display.clear();
@@ -289,7 +325,6 @@ void setup() {
 
 // main loop
 void loop() {
-  ledTick();
 
   // update displays & delay
   score_hex.showNumberDec(score, true);
@@ -303,7 +338,8 @@ void loop() {
   // enter base state
   shieldLevel = 6;
   setShields(shieldLevel);
-  setPattern(EMPTY);
+  setPattern(IDLE);
+  ledTick();
 
   for(int i = 6; i <= 11; i++) pca.setPin(i, 0);
 
@@ -342,59 +378,6 @@ void loop() {
     timeLimit = 5200;
   }
   else score++;
-}
-
-bool command_hyperdrive(uint32_t limit){
-  // command cue
-  player.play(14);
-  OLED_display.clear();
-  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
-  OLED_display.draw_bitmap_P(0,0,128,64, hyperdriveTarget);
-  OLED_display.display();
-
-  // set & display times
-  uint32_t start_time = millis();
-  uint32_t current_time = 0;
-  timer_hex.showNumberDec(limit, true);
-
-  // check for input while decrementing timer
-  while(current_time < limit){
-    timer_hex.showNumberDec(limit - current_time, true);
-    ledTick();
-
-    // return true if input is detected
-    if (digitalRead(touchPin) == LOW) {
-      //sucess cue
-
-      player.play(15);
-
-      fadeIn(WHITE, 20, 100);
-      stripRGBW.clear();
-      stripRGBW.show();
-      delay(300);
-      stripRGBW.setBrightness(100);
-      fillAll(WHITE);
-      while(trackPlaying()){}
-      stripRGBW.setBrightness(80);
-
-      // return success case
-      return true;
-    }
-
-    current_time = millis() - start_time;
-  }
-
-  // return false if time runs out
-  timer_hex.showNumberDec(0, true);
-
-  // failure cue
-  player.play(7);
-  waitForTrackToFinish();
-
-  player.play(8);
-  waitForTrackToFinish();
-
-  return false;
 }
 
 bool command_blaster(uint32_t limit){
@@ -456,6 +439,7 @@ bool command_blaster(uint32_t limit){
 
 bool command_shields(uint32_t limit){
   // command cue
+  setPattern(SHIELD_WAIT);
   clearChannels();
   shieldLevel = 0;
 
@@ -480,6 +464,13 @@ bool command_shields(uint32_t limit){
     // return true if input is detected
     if (shieldLevel == 6) {
       //sucess cue
+      
+
+      for (int b = 0; b <= 255; b += (255 / 40)) {
+        fillAll(stripRGBW.Color(0,   0,   b,   0));
+        stripRGBW.show();
+        delay(50);
+      }
 
       // return success case
       return true;
@@ -513,6 +504,63 @@ bool command_shields(uint32_t limit){
 
   // failure cue
 
+
+  return false;
+}
+
+bool command_hyperdrive(uint32_t limit){
+  // command cue
+  setPattern(HYPERDRIVE_WAIT);
+  player.play(14);
+  OLED_display.clear();
+  OLED_display.draw_bitmap_P(0, 0, 128, 64, targetingDisplay);
+  OLED_display.draw_bitmap_P(0,0,128,64, hyperdriveTarget);
+  OLED_display.display();
+
+  // set & display times
+  uint32_t start_time = millis();
+  uint32_t current_time = 0;
+  timer_hex.showNumberDec(limit, true);
+
+  // check for input while decrementing timer
+  while(current_time < limit){
+    timer_hex.showNumberDec(limit - current_time, true);
+    ledTick();
+
+    // return true if input is detected
+    if (digitalRead(touchPin) == LOW) {
+      //sucess cue
+      player.play(15);
+
+      for(int i = 6; i <= 11; i++){
+        pca.setPin(i, percentTo12Bit(100));
+      }
+
+      fadeIn(WHITE, 20, 100);
+      stripRGBW.clear();
+      stripRGBW.show();
+      delay(300);
+      stripRGBW.setBrightness(100);
+      fillAll(WHITE);
+      while(trackPlaying()){}
+      stripRGBW.setBrightness(80);
+
+      // return success case
+      return true;
+    }
+
+    current_time = millis() - start_time;
+  }
+
+  // return false if time runs out
+  timer_hex.showNumberDec(0, true);
+
+  // failure cue
+  player.play(7);
+  waitForTrackToFinish();
+
+  player.play(8);
+  waitForTrackToFinish();
 
   return false;
 }
