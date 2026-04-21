@@ -1,6 +1,8 @@
 #include "led_scheduler.h"
 
 Adafruit_NeoPixel stripRGBW(NEO_COUNT, NEO_PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel stripRGB(NEO_COUNT_RGB, NEO_PIN_RGB, NEO_GRB + NEO_KHZ800);
+Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver(0x40);
 
 struct LedScheduler {
   LedPattern  pattern;        // current ambient pattern
@@ -11,7 +13,7 @@ struct LedScheduler {
   bool        dirty;          // new pattern pending
 };
 
-LedScheduler ledSched = { IDLE, IDLE, 0, 0, 40, false };
+LedScheduler ledSched = { START_WAIT, START_WAIT, 0, 0, 40, false };
 
 void setPattern(LedPattern p, uint16_t intervalMs = 40) {
   ledSched.nextPattern = p;
@@ -20,29 +22,60 @@ void setPattern(LedPattern p, uint16_t intervalMs = 40) {
 }
 
 //pattern render functions
-void renderIdle(uint8_t frame) {
-  // Cyan pulse sweeping left to right
+void renderEmpty(uint8_t frame){
   for (int i = 0; i < NEO_COUNT; i++) {
-    float dist = abs((int)frame % NEO_COUNT - i);
-    uint8_t v = max(0, 120 - (int)(dist * 40));
-    stripRGBW.setPixelColor(i, stripRGBW.Color(0, v, v/2, 0));
+    stripRGBW.setPixelColor(i, stripRGBW.Color(0, 0, 0, 0));
+  }
+  for (int i = 0; i < NEO_COUNT_RGB; i++) {
+    stripRGB.setPixelColor(i, stripRGB.Color(0, 0, 0));
+  }
+}
+
+void renderStartWait(uint8_t frame) {
+  float pulse_g = (sin(frame * 0.25) + 1.0) * 0.5;
+  float pulse_b = (sin(frame * 0.1) + 1.0) * 0.5;
+  uint8_t g = 20 + (uint8_t)(pulse_g * 235);
+  uint8_t b = (uint8_t)((pulse_b) * 255);
+  for (int i = 0; i < NEO_COUNT; i++) {
+    stripRGBW.setPixelColor(i, stripRGBW.Color(0, g, 0, 0));
+  }
+  for (int i = 0; i < NEO_COUNT_RGB; i++) {
+    stripRGB.setPixelColor(i, stripRGB.Color(0, b, 255));
+  }
+
+  bool move = (frame / 3) % 1 == 0;
+
+  if(move){
+    for(int i = 6; i <= 11; i++){
+      pca.setPin(i, 0);
+    } 
+    pca.setPin((((frame-3) / 3) % 6) + 6, percentTo12Bit(15));
+    pca.setPin(((frame / 3) % 6) + 6, percentTo12Bit(100));
   }
 }
 
 void renderVictory(uint8_t frame) {
-  // Green fill that pulses bright
-  float pulse = (sin(frame * 0.2) + 1.0) * 0.5;
-  uint8_t g = 80 + (uint8_t)(pulse * 150);
+  // Green blink (frame-based, no delay())
+  bool on = (frame / 6) % 2 == 0;
   for (int i = 0; i < NEO_COUNT; i++) {
-    stripRGBW.setPixelColor(i, stripRGBW.Color(0, g, 0, g / 4));
+    stripRGBW.setPixelColor(i, on ? stripRGBW.Color(0, 180, 0, 45) : stripRGBW.Color(0, 0, 0, 0));
+  }
+  // RGB sticks: matching green blink
+  for (int i = 0; i < NEO_COUNT_RGB; i++) {
+    stripRGB.setPixelColor(i, on ? stripRGB.Color(0, 180, 0) : stripRGB.Color(0, 0, 0));
   }
 }
 
 void renderFailure(uint8_t frame) {
-  // Red blink (frame-based, no delay())
-  bool on = (frame / 6) % 2 == 0;
+  // Red pulse
+  float pulse = (sin(frame * 0.05) + 1.0) * 0.5;
+  uint8_t r = 20 + (uint8_t)(pulse * 235);
   for (int i = 0; i < NEO_COUNT; i++) {
-    stripRGBW.setPixelColor(i, on ? stripRGBW.Color(180, 0, 0, 0) : stripRGBW.Color(0, 0, 0, 0));
+    stripRGBW.setPixelColor(i, stripRGBW.Color(r, 0, 0, 0));
+  }
+  // RGB sticks: matching red pulse
+  for (int i = 0; i < NEO_COUNT_RGB; i++) {
+    stripRGB.setPixelColor(i, stripRGB.Color(r, 0, 0));
   }
 }
 
@@ -63,10 +96,13 @@ void ledTick() {
   ledSched.frame++;
 
   stripRGBW.clear();
+  stripRGB.clear();
   switch (ledSched.pattern) {
-    case IDLE:       renderIdle(ledSched.frame);       break;
+    case EMPTY:       renderEmpty(ledSched.frame);       break;
+    case START_WAIT:       renderStartWait(ledSched.frame);    break;  
     case VICTORY:       renderVictory(ledSched.frame);       break;
     case FAILURE:       renderFailure(ledSched.frame);       break;
   }
   stripRGBW.show();
+  stripRGB.show();
 }
